@@ -1,0 +1,77 @@
+import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+
+import { supabase } from '@/lib/supabase';
+
+// Function to generate a random 8-character alphanumeric password
+function generatePassword() {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < 8; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+}
+
+export async function POST(request: Request) {
+  try {
+    const data = await request.json();
+    const { name, email, roll, mobile, dept, year, task, party_id } = data;
+
+    if (!name || !email || !party_id) {
+      return NextResponse.json({ error: 'Name, email, and party_id are required' }, { status: 400 });
+    }
+
+    const authHeader = request.headers.get('Authorization');
+    const token = authHeader?.split(' ')[1];
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // 1. Generate plain-text password
+    const plainPassword = generatePassword();
+
+    // 2. Hash the password (first with SHA-256 to match client, then bcrypt)
+    const sha256Hash = crypto.createHash('sha256').update(plainPassword).digest('hex');
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(sha256Hash, saltRounds);
+
+    // 3. Save to Supabase
+    const { data: volunteerData, error } = await supabase.from('volunteers').insert([{
+      party_id,
+      name,
+      email,
+      mobile: mobile || 'Unknown',
+      department: dept || 'Unknown',
+      year: year || 'Unknown',
+      tasks: task || 'Unassigned',
+      password_hash: hashedPassword,
+      status: 'Active'
+    }]).select();
+
+    if (error) {
+       console.error("Supabase Error:", error);
+       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // 4. Return the generated credentials
+    return NextResponse.json({
+      success: true,
+      message: 'Volunteer added successfully',
+      volunteer: volunteerData ? volunteerData[0] : null,
+      credentials: {
+        email: email,
+        password: plainPassword
+      }
+    });
+  } catch (error) {
+    console.error('Error generating volunteer credentials:', error);
+    return NextResponse.json({ error: 'Failed to process volunteer' }, { status: 500 });
+  }
+}
