@@ -98,8 +98,8 @@ export default function VolunteerStudentDataPage() {
           const sessionVolId = data.volunteer.id;
           
           // Fetch Volunteer Data using secure RPC
-          const { data } = await supabase.rpc('get_volunteer_profile', { p_volunteer_id: sessionVolId }).single();
-          const volData = data as any;
+          const { data: rpcData } = await supabase.rpc('get_volunteer_profile', { p_volunteer_id: sessionVolId }).single();
+          const volData = rpcData as any;
           
           if (volData) {
             setVolunteerName(volData.name);
