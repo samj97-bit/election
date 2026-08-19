@@ -43,16 +43,29 @@ export default function VolunteersPage() {
       setLoading(true);
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user) {
-        const { data: profile } = await supabase.from('profiles').select('party_id').eq('user_id', userData.user.id).maybeSingle();
+        let { data: profile } = await supabase.from('profiles').select('party_id').eq('user_id', userData.user.id).maybeSingle();
         
-        if (profile) {
-          setPartyId(profile.party_id);
+        let pId = profile?.party_id;
+        
+        if (!pId) {
+          const { data: parties } = await supabase.from('parties').select('id').limit(1);
+          if (parties && parties.length > 0) {
+            pId = parties[0].id;
+            await supabase.from('profiles').upsert({ user_id: userData.user.id, party_id: pId });
+          }
+        }
+
+        if (pId) {
+          setPartyId(pId);
           const { data, error } = await supabase
             .from('volunteers')
             .select('*')
-            .eq('party_id', profile.party_id)
+            .eq('party_id', pId)
             .order('created_at', { ascending: false });
             
+          if (error) {
+            console.error("Error fetching volunteers:", error);
+          }
           if (data) setVolunteers(data);
         }
       }
@@ -62,7 +75,14 @@ export default function VolunteersPage() {
   }, []);
 
   const handleAddVolunteer = async () => {
-    if (!formData.name || !formData.email || !partyId) return;
+    if (!formData.name || !formData.email) {
+      alert("Name and email are required.");
+      return;
+    }
+    if (!partyId) {
+      alert("Your account is not assigned to a party. Cannot add volunteer.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -103,10 +123,9 @@ export default function VolunteersPage() {
 
   const filtered = volunteers.filter((v) => {
     const matchSearch =
-      v.name.toLowerCase().includes(search.toLowerCase()) ||
-      v.name.toLowerCase().includes(search.toLowerCase()) ||
-      v.department.toLowerCase().includes(search.toLowerCase()) ||
-      v.tasks.toLowerCase().includes(search.toLowerCase());
+      (v.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (v.department || "").toLowerCase().includes(search.toLowerCase()) ||
+      (v.tasks || "").toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === "All" || v.status === filter;
     return matchSearch && matchFilter;
   });
@@ -198,9 +217,9 @@ export default function VolunteersPage() {
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                      {v.name.split(" ").map((n: string) => n[0]).join("")}
+                      {(v.name || "Unknown").split(" ").map((n: string) => n[0]).join("")}
                     </div>
-                    <span className="text-sm font-medium text-white">{v.name}</span>
+                    <span className="text-sm font-medium text-white">{v.name || "Unknown"}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3.5">

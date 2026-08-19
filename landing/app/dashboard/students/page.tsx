@@ -66,6 +66,7 @@ export default function StudentDataPage() {
   const [drFilter, setDrFilter] = useState<string>("All");
   const [genderFilter, setGenderFilter] = useState<string>("All");
   const [hostelFilter, setHostelFilter] = useState<string>("All");
+  const [deptFilter, setDeptFilter] = useState<string>("All");
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [confirmChange, setConfirmChange] = useState<{ id: number; newAff: string } | null>(null);
   const [confirmCandidateChange, setConfirmCandidateChange] = useState<{ id: number; position: string; newCandidate: string } | null>(null);
@@ -362,6 +363,7 @@ export default function StudentDataPage() {
     const matchYear = yearFilter === "All" || s.year === yearFilter;
     const matchGender = genderFilter === "All" || s.gender === genderFilter;
     const matchHostel = hostelFilter === "All" || s.hostel === hostelFilter;
+    const matchDept = deptFilter === "All" || s.dept === deptFilter;
 
     let matchDr = false;
     if (drFilter === "All") {
@@ -380,7 +382,7 @@ export default function StudentDataPage() {
       matchDr = parsedDr.includes(drFilter);
     }
     
-    return matchSearch && matchYear && matchDr && matchGender && matchHostel;
+    return matchSearch && matchYear && matchDr && matchGender && matchHostel && matchDept;
   });
 
   return (
@@ -544,8 +546,8 @@ export default function StudentDataPage() {
       </div>
 
       {/* Filters and Search */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
@@ -554,6 +556,20 @@ export default function StudentDataPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
           />
+        </div>
+        
+        <div className="relative w-full sm:w-40 flex-shrink-0">
+          <select
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-10 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-all appearance-none cursor-pointer"
+          >
+            <option value="All" className="bg-[#090e1a] text-white">All Depts</option>
+            {Array.from(new Set(studentsList.map(s => s.dept).filter(Boolean))).sort().map(d => (
+              <option key={String(d)} value={String(d)} className="bg-[#090e1a] text-white">{String(d)}</option>
+            ))}
+          </select>
+          <Filter className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
         </div>
         
         <div className="relative w-full sm:w-40 flex-shrink-0">

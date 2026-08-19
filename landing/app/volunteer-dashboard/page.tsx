@@ -95,20 +95,20 @@ export default function VolunteerStudentDataPage() {
         const res = await fetch('/api/auth/volunteer/me');
         if (res.ok) {
           const data = await res.json();
-          const volName = data.volunteer.name;
-          setVolunteerName(volName);
-          if (data.volunteer.party_id) {
-            setVolunteerPartyId(data.volunteer.party_id);
-          }
+          const sessionVolId = data.volunteer.id;
           
-          // 2. Fetch students collected by this volunteer
-          const { data: studentsData } = await supabase
-            .from('students')
-            .select('*')
-            .eq('collected_by', volName)
-            .order('id', { ascending: false });
+          // Fetch Volunteer Data using secure RPC
+          const { data } = await supabase.rpc('get_volunteer_profile', { p_volunteer_id: sessionVolId }).single();
+          const volData = data as any;
+          
+          if (volData) {
+            setVolunteerName(volData.name);
+            setVolunteerPartyId(volData.party_id);
             
-          if (studentsData) setStudentsList(studentsData);
+            // Fetch Students collected by this volunteer using secure RPC
+            const { data: stdData } = await supabase.rpc('get_volunteer_students', { p_volunteer_name: volData.name });
+            setStudentsList(stdData || []);
+          }
         }
       } catch (err) {
         console.error(err);

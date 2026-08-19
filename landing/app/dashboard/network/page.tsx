@@ -35,7 +35,7 @@ export default function NetworkPage() {
 
   const [sourceNodeId, setSourceNodeId] = useState<string>("");
   const [targetNodeId, setTargetNodeId] = useState<string>("");
-  const [highlightPath, setHighlightPath] = useState<{ nodes: string[], links: string[], summary: any[] } | null>(null);
+  const [highlightPath, setHighlightPath] = useState<{ nodes: string[], links: string[], summary: any[], isCircle?: boolean } | null>(null);
   const [pathNotFound, setPathNotFound] = useState(false);
 
   const toggleFilter = (key: keyof typeof filters) => {
@@ -280,6 +280,48 @@ export default function NetworkPage() {
     setPathNotFound(false);
   }, [rawData, filters]);
 
+  const findFriendCircle = () => {
+    setHighlightPath(null);
+    setPathNotFound(false);
+    if (!sourceNodeId) return;
+
+    const circleNodes = new Set<string>();
+    circleNodes.add(sourceNodeId);
+    const circleLinks = new Set<string>();
+    let foundNeighbors = false;
+    const friendsList: any[] = [];
+
+    links.forEach(l => {
+      const sId = typeof l.source === 'object' ? l.source.id : l.source;
+      const tId = typeof l.target === 'object' ? l.target.id : l.target;
+      const rel = l.relationshipType || 'connection';
+
+      if (sId === sourceNodeId) {
+        circleNodes.add(tId);
+        circleLinks.add(`${sId}-${tId}`);
+        foundNeighbors = true;
+        friendsList.push({ name: nodes.find(n => n.id === tId)?.name || 'Unknown', rel });
+      } else if (tId === sourceNodeId) {
+        circleNodes.add(sId);
+        circleLinks.add(`${tId}-${sId}`);
+        foundNeighbors = true;
+        friendsList.push({ name: nodes.find(n => n.id === sId)?.name || 'Unknown', rel });
+      }
+    });
+
+    if (!foundNeighbors) {
+      setPathNotFound(true);
+      return;
+    }
+
+    setHighlightPath({
+      nodes: Array.from(circleNodes),
+      links: Array.from(circleLinks),
+      isCircle: true,
+      summary: friendsList
+    });
+  };
+
   const findPath = () => {
     setHighlightPath(null);
     setPathNotFound(false);
@@ -470,14 +512,25 @@ export default function NetworkPage() {
             </select>
           </div>
 
-          <button
-            onClick={findPath}
-            disabled={!sourceNodeId || !targetNodeId}
-            className="w-full md:w-auto px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-          >
-            <Search className="w-4 h-4" />
-            Find Connection
-          </button>
+          <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+            <button
+              onClick={findFriendCircle}
+              disabled={!sourceNodeId}
+              className="w-full md:w-auto px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+              title="Show direct connections of Person 1"
+            >
+              <Users className="w-4 h-4" />
+              Friend Circle
+            </button>
+            <button
+              onClick={findPath}
+              disabled={!sourceNodeId || !targetNodeId}
+              className="w-full md:w-auto px-6 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <Search className="w-4 h-4" />
+              Find Connection
+            </button>
+          </div>
         </div>
 
         {/* Path Result */}
@@ -490,23 +543,37 @@ export default function NetworkPage() {
         
         {highlightPath && (
           <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-            <div className="text-xs text-emerald-400 font-bold mb-2 uppercase tracking-wider">Path Found ({highlightPath.nodes.length - 1} degrees of separation)</div>
-            <div className="flex flex-wrap items-center gap-2">
-              {highlightPath.summary.map((step, idx) => (
-                <React.Fragment key={idx}>
-                  <div className="px-3 py-1.5 bg-black/40 border border-emerald-500/30 rounded-lg text-sm text-white font-medium">
-                    {step.name}
-                  </div>
-                  {idx < highlightPath.summary.length - 1 && (
-                    <div className="flex items-center gap-1 text-emerald-500/50 text-xs font-bold uppercase">
-                      <ArrowRight className="w-4 h-4" />
-                      {highlightPath.summary[idx + 1].rel}
-                      <ArrowRight className="w-4 h-4" />
-                    </div>
-                  )}
-                </React.Fragment>
-              ))}
+            <div className="text-xs text-emerald-400 font-bold mb-2 uppercase tracking-wider">
+              {highlightPath.isCircle ? `Friend Circle Found (${highlightPath.nodes.length - 1} connections)` : `Path Found (${highlightPath.nodes.length - 1} degrees of separation)`}
             </div>
+            
+            {highlightPath.isCircle ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {highlightPath.summary.map((friend, idx) => (
+                  <div key={idx} className="px-3 py-1.5 bg-black/40 border border-emerald-500/30 rounded-lg text-sm text-white font-medium flex items-center gap-2">
+                    {friend.name}
+                    <span className="text-[10px] text-emerald-400 font-bold uppercase px-1.5 py-0.5 bg-emerald-500/10 rounded">{friend.rel}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                {highlightPath.summary.map((step, idx) => (
+                  <React.Fragment key={idx}>
+                    <div className="px-3 py-1.5 bg-black/40 border border-emerald-500/30 rounded-lg text-sm text-white font-medium">
+                      {step.name}
+                    </div>
+                    {idx < highlightPath.summary.length - 1 && (
+                      <div className="flex items-center gap-1 text-emerald-500/50 text-xs font-bold uppercase">
+                        <ArrowRight className="w-4 h-4" />
+                        {highlightPath.summary[idx + 1].rel}
+                        <ArrowRight className="w-4 h-4" />
+                      </div>
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </motion.div>
