@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
 import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 // Function to generate a random 8-character alphanumeric password
 function generatePassword() {
@@ -42,8 +43,19 @@ export async function POST(request: Request) {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(sha256Hash, saltRounds);
 
-    // 3. Save to Supabase
-    const { data: volunteerData, error } = await supabase.from('volunteers').insert([{
+    // 3. Create an authenticated Supabase client using the user's token
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabaseAuth = createClient(supabaseUrl, supabaseKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    });
+
+    // 4. Save to Supabase using the authenticated client so RLS passes
+    const { data: volunteerData, error } = await supabaseAuth.from('volunteers').insert([{
       party_id,
       name,
       email,
@@ -60,7 +72,7 @@ export async function POST(request: Request) {
        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 4. Return the generated credentials
+    // 5. Return the generated credentials
     return NextResponse.json({
       success: true,
       message: 'Volunteer added successfully',

@@ -23,6 +23,8 @@ import {
   Flag,
   Users,
   Trash2,
+  Target,
+  Edit2,
   PlusCircle,
 } from "lucide-react";
 
@@ -54,9 +56,11 @@ export default function StudentDataPage() {
   const [studentsList, setStudentsList] = useState<any[]>([]);
   const [candidatesList, setCandidatesList] = useState<any[]>([]);
   const [liveDrStyle, setLiveDrStyle] = useState<Record<string, { bg: string; text: string; hex: string }>>({});
-  const drOptions = [...candidatesList.map(c => c.name), "Undecided"];
+  const drOptions = [...candidatesList.filter(c => c.position !== 'President').map(c => c.name)];
+  const presidentOptions = [...candidatesList.filter(c => c.position === 'President').map(c => c.name), "Undecided"];
 
   const [loading, setLoading] = useState(true);
+  const [userPartyId, setUserPartyId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [yearFilter, setYearFilter] = useState<string>("All");
   const [drFilter, setDrFilter] = useState<string>("All");
@@ -68,13 +72,78 @@ export default function StudentDataPage() {
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   
   const [showAddModal, setShowAddModal] = useState(false);
-  const [formData, setFormData] = useState({ name: "", gender: "Male", roll: "", dept: "", year: "", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: "Undecided" });
+  const [formData, setFormData] = useState<{
+    name: string; gender: string; roll: string; dept: string; year: string; hostel: string; room: string; address: string; mobile: string; email: string; drPref: string[]; presidentPref: string;
+    friends: { roll: string; type: string }[];
+  }>({ name: "", gender: "Male", roll: "", dept: "", year: "", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
+
+  const [editingStudentId, setEditingStudentId] = useState<number | null>(null);
+
+  const handleEditClick = (student: any) => {
+    let parsedFriends = [];
+    if (student.friends) {
+      try {
+        parsedFriends = JSON.parse(student.friends);
+        if (!Array.isArray(parsedFriends)) parsedFriends = [];
+      } catch (e) {
+        parsedFriends = student.friends.split(',').map((f: string) => ({ roll: f.trim(), type: 'friend' }));
+      }
+    }
+
+    let parsedDrPref: string[] = [];
+    if (student.dr_preference && student.dr_preference !== "Undecided") {
+      try {
+        parsedDrPref = JSON.parse(student.dr_preference);
+        if (!Array.isArray(parsedDrPref)) parsedDrPref = [student.dr_preference];
+      } catch (e) {
+        parsedDrPref = [student.dr_preference];
+      }
+    }
+
+    setFormData({
+      name: student.name,
+      gender: student.gender || "Male",
+      roll: student.roll || "",
+      dept: student.dept || "",
+      year: student.year || "",
+      hostel: student.hostel || "Day Scholar",
+      room: student.room || "",
+      address: student.address || "",
+      mobile: student.mobile || "",
+      email: student.email || "",
+      drPref: parsedDrPref,
+      presidentPref: student.president_preference || "Undecided",
+      friends: parsedFriends
+    });
+    setEditingStudentId(student.id);
+    setShowAddModal(true);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
+      
+      const { data: userData } = await supabase.auth.getUser();
+      let currentPartyId = null;
+      if (userData?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('party_id')
+          .eq('user_id', userData.user.id)
+          .maybeSingle();
+        if (profile) {
+          currentPartyId = profile.party_id;
+          setUserPartyId(profile.party_id);
+        }
+      }
+
+      let studentsQuery = supabase.from('students').select('*').order('id', { ascending: false });
+      if (currentPartyId) {
+        studentsQuery = studentsQuery.eq('party_id', currentPartyId);
+      }
+
       const [studentsRes, candidatesRes] = await Promise.all([
-        supabase.from('students').select('*').order('id', { ascending: false }),
+        studentsQuery,
         supabase.from('candidates').select('*')
       ]);
       if (studentsRes.data) setStudentsList(studentsRes.data);
@@ -94,7 +163,7 @@ export default function StudentDataPage() {
 
   const handleAddStudent = async () => {
     if (!formData.name) return;
-    const newStudent = {
+    const baseStudent = {
       name: formData.name,
       gender: formData.gender,
       roll: formData.roll || "Unknown",
@@ -105,18 +174,86 @@ export default function StudentDataPage() {
       address: formData.address || "Unknown",
       mobile: formData.mobile || "Unknown",
       email: formData.email || "Not provided",
-      collected_by: "Admin",
-      affiliation: "Neutral",
-      dr_preference: formData.drPref
+      dr_preference: formData.drPref,
+      friends: formData.friends.length > 0 ? JSON.stringify(formData.friends) : null,
+      ...(userPartyId ? { party_id: userPartyId } : {})
     };
     
-    const { data, error } = await supabase.from('students').insert([newStudent]).select();
-    
-    if (data && data.length > 0) {
-      setStudentsList([data[0], ...studentsList]);
+    if (editingStudentId) {
+      const { data, error } = await supabase.from('students').update(baseStudent).eq('id', editingStudentId).select();
+      
+      if (error) {
+        console.error("Supabase Error:", error);
+        alert(`Error updating student: ${error.message}`);
+        return;
+      }
+      
+      if (!data || data.length === 0) {
+        console.warn("Update blocked by RLS or student not found.");
+        alert("Failed to update student. Ensure you have permissions (RLS blocked the update).");
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        setStudentsList(studentsList.map(s => s.id === editingStudentId ? data[0] : s));
+      }
+    } else {
+      const newStudent = {
+        ...baseStudent,
+        collected_by: "Admin",
+        affiliation: "Neutral"
+      };
+
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('add_student_secure', {
+          p_name: newStudent.name,
+          p_gender: newStudent.gender,
+          p_roll: newStudent.roll,
+          p_dept: newStudent.dept,
+          p_year: newStudent.year,
+          p_hostel: newStudent.hostel,
+          p_room: newStudent.room,
+          p_address: newStudent.address,
+          p_mobile: newStudent.mobile,
+          p_email: newStudent.email,
+          p_dr_preference: newStudent.dr_preference,
+          p_friends: newStudent.friends ? JSON.parse(newStudent.friends) : null,
+          p_collected_by: newStudent.collected_by,
+          p_affiliation: newStudent.affiliation,
+          p_party_id: newStudent.party_id || null,
+          p_president_preference: formData.presidentPref !== "Undecided" ? formData.presidentPref : null
+        });
+        
+        if (rpcError) {
+          throw new Error(rpcError.message);
+        }
+        
+        // Fetch the newly added student to get the full object
+        const { data: addedStudent } = await supabase
+          .from('students')
+          .select('*')
+          .eq('id', rpcData.id)
+          .single();
+          
+        if (addedStudent) {
+          setStudentsList([addedStudent, ...studentsList]);
+        }
+      } catch (err: any) {
+        console.error("RPC Error:", err);
+        if (err.message && err.message.includes('unique_roll_number')) {
+          alert(`Error: A student with Roll Number "${newStudent.roll}" already exists in the system!`);
+        } else if (err.message && err.message.includes('Could not find the function')) {
+          alert(`Error adding student: ${err.message}. Make sure you ran the SQL script in Supabase!`);
+        } else {
+          alert(`Error adding student: ${err.message}`);
+        }
+        return;
+      }
     }
+    
     setShowAddModal(false);
-    setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: "Undecided" });
+    setEditingStudentId(null);
+    setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
   };
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
 
@@ -182,19 +319,25 @@ export default function StudentDataPage() {
     doc.setTextColor(100);
     doc.text(`Total Entries: ${filtered.length} | Generated on: ${new Date().toLocaleDateString()}`, 40, 60);
     
-    const tableColumn = ["Roll No", "Name", "Gender", "Year", "Dept", "Mobile", "Hostel", "DR Preference", "Affiliation", "Collected By"];
-    const tableRows = filtered.map(s => [
-      s.roll,
-      s.name,
-      s.gender,
-      s.year,
-      s.dept,
-      s.mobile,
-      s.hostel,
-      s.dr_preference,
-      s.affiliation,
-      s.collected_by
-    ]);
+    const tableColumn = ["Roll No", "Name", "Gender", "Year", "Dept", "Mobile", "Hostel & Room", "DR Pref", "President", "Affiliation"];
+    const tableRows = filtered.map(s => {
+      let parsedDr = s.dr_preference;
+      if (parsedDr && parsedDr.startsWith('[')) {
+        try { parsedDr = JSON.parse(parsedDr).join(', '); } catch (e) {}
+      }
+      return [
+        s.roll,
+        s.name,
+        s.gender,
+        s.year,
+        s.dept,
+        s.mobile,
+        `${s.hostel} ${s.room ? '('+s.room+')' : ''}`.trim(),
+        parsedDr || '-',
+        s.president_preference || '-',
+        s.affiliation
+      ];
+    });
 
     autoTable(doc, {
       head: [tableColumn],
@@ -217,9 +360,25 @@ export default function StudentDataPage() {
       (s.collected_by && s.collected_by.toLowerCase().includes(search.toLowerCase()));
     
     const matchYear = yearFilter === "All" || s.year === yearFilter;
-    const matchDr = drFilter === "All" || s.dr_preference === drFilter;
     const matchGender = genderFilter === "All" || s.gender === genderFilter;
     const matchHostel = hostelFilter === "All" || s.hostel === hostelFilter;
+
+    let matchDr = false;
+    if (drFilter === "All") {
+      matchDr = true;
+    } else {
+      let parsedDr = [];
+      if (s.dr_preference) {
+        if (s.dr_preference.startsWith('[')) {
+          try { parsedDr = JSON.parse(s.dr_preference); } catch (e) { parsedDr = [s.dr_preference]; }
+        } else {
+          parsedDr = [s.dr_preference];
+        }
+      } else {
+        parsedDr = ["Undecided"];
+      }
+      matchDr = parsedDr.includes(drFilter);
+    }
     
     return matchSearch && matchYear && matchDr && matchGender && matchHostel;
   });
@@ -254,10 +413,22 @@ export default function StudentDataPage() {
       <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-5 flex flex-col md:flex-row items-center gap-6 md:gap-10">
         {(() => {
           const counts = studentsList.reduce((acc: any, s: any) => {
-            const dr = s.dr_preference || "Undecided";
-            acc[dr] = (acc[dr] || 0) + 1;
+            let drs = ["Undecided"];
+            if (s.dr_preference) {
+              if (s.dr_preference.startsWith('[')) {
+                try { 
+                  drs = JSON.parse(s.dr_preference);
+                  if (drs.length === 0) drs = ["Undecided"];
+                } catch (e) { drs = [s.dr_preference]; }
+              } else {
+                drs = [s.dr_preference];
+              }
+            }
+            drs.forEach((dr: string) => {
+              acc[dr] = (acc[dr] || 0) + 1;
+            });
             return acc;
-          }, {} as Record<string, number>);
+          }, {});
           const total = studentsList.length;
           
           let gradientStops: string[] = [];
@@ -518,22 +689,44 @@ export default function StudentDataPage() {
                       
                       {/* Candidate Preferences */}
                       <div className="flex flex-wrap gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
-                        <span className={`flex items-center text-[10px] px-2 py-1 rounded border font-semibold tracking-wide ${s.dr_preference === 'Undecided' ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-400'}`} title={`DR: ${s.dr_preference}`}>
-                          <span className="text-slate-500 mr-1">DR:</span> <span className={s.dr_preference === 'Undecided' ? 'text-slate-400' : 'text-blue-300'}>{s.dr_preference}</span>
-                        </span>
+                        {(() => {
+                          let drs = [];
+                          if (s.dr_preference) {
+                            if (s.dr_preference.startsWith('[')) {
+                              try { drs = JSON.parse(s.dr_preference); } catch (e) { drs = [s.dr_preference]; }
+                            } else {
+                              drs = [s.dr_preference];
+                            }
+                          }
+                          if (drs.length === 0) drs = ["Undecided"];
+                          return drs.map((dr: string, idx: number) => (
+                            <span key={idx} className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded border font-semibold tracking-wide w-max ${dr === 'Undecided' ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-400'}`} title={`DR: ${dr}`}>
+                              <span className="text-slate-500 mr-1">DR:</span> <span className={dr === 'Undecided' ? 'text-slate-400' : 'text-blue-300'}>{dr}</span>
+                            </span>
+                          ));
+                        })()}
                       </div>
                     </div>
                   </td>
 
                   {/* Actions */}
                   <td className="px-4 py-4 text-right">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); requestDelete(s.id, s.name); }}
-                      className="p-1.5 rounded-lg text-rose-500 hover:text-white hover:bg-rose-500/20 transition-colors opacity-0 group-hover:opacity-100"
-                      title="Delete Student"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex justify-end gap-1">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleEditClick(s); }}
+                        className="p-1.5 rounded-lg text-blue-500 hover:text-white hover:bg-blue-500/20 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Edit Student"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); requestDelete(s.id, s.name); }}
+                        className="p-1.5 rounded-lg text-rose-500 hover:text-white hover:bg-rose-500/20 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Delete Student"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </motion.tr>
               );
@@ -573,6 +766,9 @@ export default function StudentDataPage() {
                 {/* Header Profile Section */}
                 <div className="bg-white/[0.03] p-6 border-b border-white/8 relative">
                   <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <button onClick={() => { setSelectedStudent(null); handleEditClick(selectedStudent); }} className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center hover:bg-blue-500/20 transition-colors text-blue-500" title="Edit Student">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
                     <button onClick={() => requestDelete(selectedStudent.id, selectedStudent.name)} className="w-8 h-8 rounded-full bg-rose-500/10 flex items-center justify-center hover:bg-rose-500/20 transition-colors text-rose-500" title="Delete Student">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -861,7 +1057,11 @@ export default function StudentDataPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowAddModal(false)}
+              onClick={() => {
+                setShowAddModal(false);
+                setEditingStudentId(null);
+                setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
+              }}
               className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
             />
             <motion.div
@@ -872,8 +1072,12 @@ export default function StudentDataPage() {
             >
               <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0d1526] shadow-2xl my-8 flex flex-col max-h-[90vh]">
                 <div className="flex items-center justify-between p-5 border-b border-white/10 flex-shrink-0">
-                  <h3 className="text-lg font-bold text-white">Add New Student</h3>
-                  <button onClick={() => setShowAddModal(false)} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/15 transition-colors">
+                  <h3 className="text-lg font-bold text-white">{editingStudentId ? "Edit Student" : "Add New Student"}</h3>
+                  <button onClick={() => {
+                    setShowAddModal(false);
+                    setEditingStudentId(null);
+                    setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
+                  }} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/15 transition-colors">
                     <X className="w-4 h-4 text-slate-400" />
                   </button>
                 </div>
@@ -886,7 +1090,7 @@ export default function StudentDataPage() {
                     { id: "roll", label: "Roll Number", icon: IdCard, placeholder: "e.g. CS24B001", type: "text" },
                     { 
                       id: "dept", label: "Department", icon: Building2, type: "select", 
-                      options: ["Computer Science", "Electronics & Comm.", "Mechanical Engg.", "Civil Engineering", "Electrical Engg.", "Others"] 
+                      options: ["Computer Science", "Information Technology", "UILS", "Electronics & Comm.", "Mechanical Engg.", "Civil Engineering", "Electrical Engg.", "Biotechnology", "Others"] 
                     },
                     { 
                       id: "year", label: "Year", icon: Calendar, type: "select", 
@@ -901,12 +1105,7 @@ export default function StudentDataPage() {
                         : [...Array.from({length: 8}, (_, i) => `Boys Hostel ${i + 1}`), "Day Scholar"]
                     },
                     { id: "room", label: "Room No. (Optional)", icon: Home, placeholder: "e.g. 212", type: "text" },
-                    { id: "address", label: "Home Address", icon: MapPin, placeholder: "City, State", type: "text", fullWidth: true },
-                    { 
-                      id: "drPref", label: "DR Preference", icon: User, type: "select", 
-                      options: drOptions,
-                      fullWidth: true
-                    },
+                    { id: "address", label: "Home Address", icon: MapPin, placeholder: "City, State", type: "text", fullWidth: true }
                   ].map((f) => (
                     <div key={f.id} className={`space-y-1.5 ${f.fullWidth ? 'md:col-span-2' : 'col-span-1'}`}>
                       <label className="text-xs font-semibold text-slate-400">{f.label}</label>
@@ -914,7 +1113,7 @@ export default function StudentDataPage() {
                         <f.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                         {f.type === 'select' ? (
                           <select
-                            value={formData[f.id as keyof typeof formData]}
+                            value={formData[f.id as keyof typeof formData] as string}
                             onChange={(e) => {
                               const val = e.target.value;
                               if (f.id === "gender") {
@@ -938,7 +1137,7 @@ export default function StudentDataPage() {
                           <input
                             type={f.type}
                             placeholder={f.placeholder}
-                            value={formData[f.id as keyof typeof formData]}
+                            value={formData[f.id as keyof typeof formData] as string}
                             onChange={(e) => setFormData(prev => ({ ...prev, [f.id]: e.target.value }))}
                             className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
                           />
@@ -946,6 +1145,125 @@ export default function StudentDataPage() {
                       </div>
                     </div>
                   ))}
+                  
+                  {/* President Preference */}
+                  <div className="space-y-1.5 col-span-1">
+                    <label className="text-xs font-semibold text-slate-400">President Preference</label>
+                    <div className="relative">
+                      <Target className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <select
+                        value={formData.presidentPref}
+                        onChange={(e) => setFormData((prev: any) => ({ ...prev, presidentPref: e.target.value }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer appearance-none"
+                      >
+                        <option value="Undecided" className="bg-[#0a0f1c] text-white">Undecided</option>
+                        {presidentOptions.filter(o => o !== 'Undecided').map(opt => (
+                          <option key={opt} value={opt} className="bg-[#0a0f1c] text-white">{opt}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Multi-DR Preference (Up to 4) */}
+                  <div className="space-y-1.5 col-span-1 md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-400 flex items-center justify-between">
+                      <span>DR Preference (Select up to 4)</span>
+                      <span className="text-[10px] text-blue-400">{formData.drPref.length}/4 Selected</span>
+                    </label>
+                    <div className="p-3 bg-white/5 border border-white/10 rounded-xl flex flex-wrap gap-2">
+                      {drOptions.length === 0 ? (
+                        <p className="text-xs text-slate-500 italic py-1">No DR candidates available.</p>
+                      ) : (
+                        drOptions.map(opt => {
+                          const isSelected = formData.drPref.includes(opt);
+                          const isDisabled = !isSelected && formData.drPref.length >= 4;
+                          return (
+                            <button
+                              type="button"
+                              key={opt}
+                              disabled={isDisabled}
+                              onClick={() => {
+                                setFormData(prev => {
+                                  const newArr = prev.drPref.includes(opt) 
+                                    ? prev.drPref.filter(x => x !== opt)
+                                    : [...prev.drPref, opt];
+                                  return { ...prev, drPref: newArr };
+                                });
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                                isSelected 
+                                  ? 'bg-blue-600/20 text-blue-400 border-blue-500/30' 
+                                  : isDisabled 
+                                    ? 'bg-white/5 text-slate-600 border-white/5 cursor-not-allowed'
+                                    : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:border-white/20'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Dynamic Relationships UI */}
+                  <div className="md:col-span-2 space-y-3 pt-2 border-t border-white/5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-bold text-white">Friend Circle & Relationships</label>
+                      <button 
+                        type="button"
+                        onClick={() => setFormData({...formData, friends: [...formData.friends, { roll: "", type: "friend" }]})}
+                        className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                      >
+                        + Add Connection
+                      </button>
+                    </div>
+                    {formData.friends.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic">No relationships added yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {formData.friends.map((friend, idx) => (
+                          <div key={idx} className="flex gap-2 items-center">
+                            <input 
+                              type="text" placeholder="Roll No. (e.g. CS24B001)"
+                              value={friend.roll}
+                              onChange={(e) => {
+                                const newFriends = [...formData.friends];
+                                newFriends[idx] = { ...newFriends[idx], roll: e.target.value };
+                                setFormData({...formData, friends: newFriends});
+                              }}
+                              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
+                            />
+                            <select
+                              value={friend.type}
+                              onChange={(e) => {
+                                const newFriends = [...formData.friends];
+                                newFriends[idx] = { ...newFriends[idx], type: e.target.value };
+                                setFormData({...formData, friends: newFriends});
+                              }}
+                              className="w-32 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
+                            >
+                              <option value="friend" className="bg-[#090e1a]">Friend</option>
+                              <option value="boyfriend" className="bg-[#090e1a]">Boyfriend</option>
+                              <option value="girlfriend" className="bg-[#090e1a]">Girlfriend</option>
+                              <option value="roommate" className="bg-[#090e1a]">Roommate</option>
+                              <option value="other" className="bg-[#090e1a]">Other</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newFriends = formData.friends.filter((_, i) => i !== idx);
+                                setFormData({...formData, friends: newFriends});
+                              }}
+                              className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                   <div className="mt-6 flex gap-3">
@@ -960,7 +1278,7 @@ export default function StudentDataPage() {
                       disabled={!formData.name}
                       className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Add Student
+                      {editingStudentId ? "Save Changes" : "Add Student"}
                     </button>
                   </div>
                 </div>

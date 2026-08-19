@@ -18,6 +18,7 @@ import {
   Vote,
   Sparkles,
   Database,
+  Share2,
 } from "lucide-react";
 
 const navLinks = [
@@ -25,6 +26,7 @@ const navLinks = [
   { href: "/dashboard/candidates", label: "Candidates", icon: Users },
   { href: "/dashboard/volunteers", label: "Volunteers", icon: UserCheck },
   { href: "/dashboard/students", label: "Student Data", icon: Database },
+  { href: "/dashboard/network", label: "Network Analysis", icon: Share2 },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];

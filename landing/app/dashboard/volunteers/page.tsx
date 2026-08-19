@@ -326,7 +326,7 @@ export default function VolunteersPage() {
                         { id: "roll", label: "Roll Number", icon: IdCard, placeholder: "e.g. CS22B001", type: "text" },
                         { 
                           id: "dept", label: "Department", icon: Building2, type: "select", 
-                          options: ["Computer Science", "Electronics & Comm.", "Mechanical Engg.", "Civil Engineering", "Others"] 
+                          options: ["Computer Science", "Information Technology", "UILS", "Electronics & Comm.", "Mechanical Engg.", "Civil Engineering", "Biotechnology", "Others"] 
                         },
                         { 
                           id: "year", label: "Year", icon: IdCard, type: "select", 

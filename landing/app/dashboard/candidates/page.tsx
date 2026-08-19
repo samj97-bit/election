@@ -125,7 +125,7 @@ export default function CandidatesPage() {
     const newCandidate = {
       name: form.get("name") as string,
       photo_url: photoUrl,
-      position: "Department Representative",
+      position: form.get("position") as string || "Department Representative",
       department: form.get("department") as string,
       year: form.get("year") as string,
       status: form.get("status") as string || "Active",
@@ -313,18 +313,22 @@ export default function CandidatesPage() {
 
                   <div className="col-span-1 space-y-1">
                     <label className="text-xs font-semibold text-slate-400">Position</label>
-                    <div className="relative">
-                      <input type="text" value="Department Representative" disabled className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-sm text-slate-500 cursor-not-allowed" />
-                    </div>
+                    <select name="position" defaultValue={editingCandidate?.position || "Department Representative"} className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer appearance-none">
+                      <option value="President" className="bg-[#0a0f1c]">President</option>
+                      <option value="Department Representative" className="bg-[#0a0f1c]">Department Representative</option>
+                    </select>
                   </div>
 
                   <div className="col-span-1 space-y-1">
                     <label className="text-xs font-semibold text-slate-400">Department</label>
                     <select name="department" defaultValue={editingCandidate?.department || "Computer Science"} className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer appearance-none">
                       <option value="Computer Science" className="bg-[#0a0f1c]">Computer Science</option>
+                      <option value="Information Technology" className="bg-[#0a0f1c]">Information Technology</option>
+                      <option value="UILS" className="bg-[#0a0f1c]">UILS (Law)</option>
                       <option value="Electronics & Comm." className="bg-[#0a0f1c]">Electronics & Comm.</option>
                       <option value="Mechanical Engg." className="bg-[#0a0f1c]">Mechanical Engg.</option>
                       <option value="Civil Engineering" className="bg-[#0a0f1c]">Civil Engineering</option>
+                      <option value="Biotechnology" className="bg-[#0a0f1c]">Biotechnology</option>
                     </select>
                   </div>
                   

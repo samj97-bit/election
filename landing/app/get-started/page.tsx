@@ -456,6 +456,8 @@ export default function GetStartedPage() {
                             >
                               <option value="" disabled hidden>Select Department</option>
                               <option value="cse" className="bg-slate-900">Computer Science Engineering</option>
+                              <option value="it" className="bg-slate-900">Information Technology</option>
+                              <option value="uils" className="bg-slate-900">UILS (Law)</option>
                               <option value="ece" className="bg-slate-900">Electronics & Communication</option>
                               <option value="me" className="bg-slate-900">Mechanical Engineering</option>
                               <option value="ce" className="bg-slate-900">Civil Engineering</option>
