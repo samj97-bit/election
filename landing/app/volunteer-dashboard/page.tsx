@@ -221,7 +221,7 @@ export default function VolunteerStudentDataPage() {
         if (addedStudent) {
           setStudentsList([addedStudent, ...studentsList]);
           setShowAddModal(false);
-          setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: "Undecided", friends: [] });
+          setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
         }
       } catch (err: any) {
         console.error("RPC Error:", err);
@@ -261,7 +261,7 @@ export default function VolunteerStudentDataPage() {
         <button 
           onClick={() => {
             setEditingStudentId(null);
-            setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: "Undecided", friends: [] });
+            setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
             setShowAddModal(true);
           }}
           className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors shadow-lg shadow-blue-500/20"
@@ -459,7 +459,7 @@ export default function VolunteerStudentDataPage() {
                     onClick={() => {
                       setShowAddModal(false);
                       setEditingStudentId(null);
-                      setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: "Undecided", friends: [] });
+                      setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
                     }}
                     className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/15 transition-colors"
                   >
@@ -682,7 +682,7 @@ export default function VolunteerStudentDataPage() {
                       onClick={() => {
                         setShowAddModal(false);
                         setEditingStudentId(null);
-                        setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: "Undecided", friends: [] });
+                        setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
                       }}
                       disabled={isSubmitting}
                       className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
