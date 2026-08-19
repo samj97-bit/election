@@ -32,9 +32,24 @@ export default function AnalyticsPage() {
 
   const depts: Record<string, number> = {};
   let drVotes = 0;
+  let presidentVotes = 0;
   filteredStudents.forEach(s => {
     depts[s.dept] = (depts[s.dept] || 0) + 1;
-    if (s.dr_preference && s.dr_preference !== 'Undecided') drVotes++;
+    
+    if (s.dr_preference) {
+      if (s.dr_preference.startsWith('[')) {
+        try {
+          const arr = JSON.parse(s.dr_preference);
+          drVotes += arr.filter((v: string) => v !== 'Undecided').length;
+        } catch(e) {}
+      } else if (s.dr_preference !== 'Undecided') {
+        drVotes++;
+      }
+    }
+
+    if (s.president_preference && s.president_preference !== 'Undecided') {
+      presidentVotes++;
+    }
   });
 
   const deptBreakdown = Object.keys(depts).map((d, i) => {
@@ -49,8 +64,8 @@ export default function AnalyticsPage() {
 
   const topStats = [
     { label: "Total DR Support Votes", value: drVotes.toString(), icon: TrendingUp, color: "text-blue-400", bg: "bg-blue-500/10", change: "Updated Live" },
+    { label: "Total President Votes", value: presidentVotes.toString(), icon: Users, color: "text-violet-400", bg: "bg-violet-500/10", change: "Updated Live" },
     { label: "Total Data Collected", value: filteredStudents.length.toString(), icon: Users, color: "text-emerald-400", bg: "bg-emerald-500/10", change: "Total submissions" },
-    { label: "Peak Collection Hour", value: "N/A", icon: Zap, color: "text-amber-400", bg: "bg-amber-500/10", change: "Need more data" },
   ];
 
   const timelineMap: Record<string, { collected: number; partyVotes: number }> = {};
@@ -59,7 +74,15 @@ export default function AnalyticsPage() {
     const day = new Date(s.created_at).toLocaleDateString('en-US', { weekday: 'short' });
     if (!timelineMap[day]) timelineMap[day] = { collected: 0, partyVotes: 0 };
     timelineMap[day].collected++;
-    if (s.dr_preference && s.dr_preference !== 'Undecided') timelineMap[day].partyVotes++;
+    if (s.dr_preference) {
+      if (s.dr_preference.startsWith('[')) {
+        try {
+          if (JSON.parse(s.dr_preference).filter((v:string) => v !== 'Undecided').length > 0) timelineMap[day].partyVotes++;
+        } catch(e){}
+      } else if (s.dr_preference !== 'Undecided') {
+        timelineMap[day].partyVotes++;
+      }
+    }
   });
   
   const voteTimeline = Object.keys(timelineMap).map(day => ({
@@ -72,7 +95,15 @@ export default function AnalyticsPage() {
   const totalPartyVotes = voteTimeline.reduce((s, d) => s + d.partyVotes, 0) || 0;
   const maxCollected = Math.max(...voteTimeline.map((d) => d.collected), 1);
   
-  const uniqueDrs = Array.from(new Set(allStudents.map(s => s.dr_preference).filter(Boolean)));
+  const uniqueDrs = Array.from(new Set(allStudents.flatMap(s => {
+    if (s.dr_preference) {
+      if (s.dr_preference.startsWith('[')) {
+        try { return JSON.parse(s.dr_preference); } catch(e) {}
+      }
+      return [s.dr_preference];
+    }
+    return [];
+  }).filter(v => v && v !== 'Undecided')));
 
   return (
     <div className="max-w-6xl mx-auto space-y-5">
@@ -274,7 +305,22 @@ export default function AnalyticsPage() {
                   const filtered = filteredStudents.filter(s => {
                     const matchDept = s.dept === selectedDept;
                     const matchSearch = s.name.toLowerCase().includes(modalSearch.toLowerCase()) || (s.mobile && s.mobile.replace(/\s+/g, "").includes(modalSearch.replace(/\s+/g, "")));
-                    const matchDr = modalDrFilter === "All" || s.dr_preference === modalDrFilter;
+                    
+                    let matchDr = false;
+                    if (modalDrFilter === "All") {
+                      matchDr = true;
+                    } else {
+                      let parsedDr = [];
+                      if (s.dr_preference) {
+                        if (s.dr_preference.startsWith('[')) {
+                          try { parsedDr = JSON.parse(s.dr_preference); } catch(e) { parsedDr = [s.dr_preference]; }
+                        } else {
+                          parsedDr = [s.dr_preference];
+                        }
+                      }
+                      matchDr = parsedDr.includes(modalDrFilter);
+                    }
+                    
                     return matchDept && matchSearch && matchDr;
                   });
 
@@ -301,7 +347,22 @@ export default function AnalyticsPage() {
                           </div>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md" title={`Supporting ${s.dr_preference}`}>DR: {s.dr_preference}</span>
+                      <div className="flex gap-1 flex-wrap justify-end">
+                        {(() => {
+                          let drs = [];
+                          if (s.dr_preference) {
+                            if (s.dr_preference.startsWith('[')) {
+                              try { drs = JSON.parse(s.dr_preference); } catch(e) { drs = [s.dr_preference]; }
+                            } else {
+                              drs = [s.dr_preference];
+                            }
+                          }
+                          if (drs.length === 0) drs = ["Undecided"];
+                          return drs.map((dr: string, idx: number) => (
+                            <span key={idx} className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md" title={`Supporting ${dr}`}>DR: {dr}</span>
+                          ));
+                        })()}
+                      </div>
                     </div>
                   ));
                 })()}
@@ -339,9 +400,29 @@ export default function AnalyticsPage() {
                     </div>
                     <div>
                       <h3 className="text-xl font-bold text-white mb-1">{selectedStudent.name}</h3>
-                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/15 text-blue-400 uppercase tracking-wider">
-                        SUPPORTING DR: {selectedStudent.dr_preference?.toUpperCase()}
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(() => {
+                          let drs = [];
+                          if (selectedStudent.dr_preference) {
+                            if (selectedStudent.dr_preference.startsWith('[')) {
+                              try { drs = JSON.parse(selectedStudent.dr_preference); } catch(e) { drs = [selectedStudent.dr_preference]; }
+                            } else {
+                              drs = [selectedStudent.dr_preference];
+                            }
+                          }
+                          if (drs.length === 0) drs = ["Undecided"];
+                          return drs.map((dr: string, idx: number) => (
+                            <div key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/15 text-blue-400 uppercase tracking-wider">
+                              DR: {dr}
+                            </div>
+                          ));
+                        })()}
                       </div>
+                      {selectedStudent.president_preference && selectedStudent.president_preference !== 'Undecided' && (
+                        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-500/15 text-violet-400 uppercase tracking-wider mt-1">
+                          PRESIDENT: {selectedStudent.president_preference}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

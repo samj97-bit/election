@@ -168,12 +168,31 @@ export default function NetworkPage() {
       }
 
       if (filters.candidate && s.dr_preference) {
-        let cId = candidateMap.get(s.dr_preference);
-        if (!cId) {
-          cId = createTempNode(s.dr_preference, "candidate");
-          candidateMap.set(s.dr_preference, cId);
+        let drs = [];
+        if (s.dr_preference.startsWith('[')) {
+          try { drs = JSON.parse(s.dr_preference); } catch(e) { drs = [s.dr_preference]; }
+        } else {
+          drs = [s.dr_preference];
         }
-        newLinks.push({ source: sId, target: cId });
+        
+        drs.forEach((dr: string) => {
+          if (dr === "Undecided") return;
+          let cId = candidateMap.get(dr);
+          if (!cId) {
+            cId = createTempNode(dr, "candidate");
+            candidateMap.set(dr, cId);
+          }
+          newLinks.push({ source: sId, target: cId, relationshipType: 'dr_support' });
+        });
+      }
+
+      if (filters.candidate && s.president_preference && s.president_preference !== "Undecided") {
+        let cId = candidateMap.get(s.president_preference);
+        if (!cId) {
+          cId = createTempNode(s.president_preference, "candidate");
+          candidateMap.set(s.president_preference, cId);
+        }
+        newLinks.push({ source: sId, target: cId, relationshipType: 'president_support' });
       }
 
       if (filters.hostel && s.hostel && s.hostel !== "Unknown" && s.hostel !== "N/A" && s.hostel !== "Day Scholar") {

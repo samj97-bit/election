@@ -86,6 +86,8 @@ export default function NetworkGraph({ nodes, links, highlightPath }: NetworkGra
             return 'rgba(255, 255, 255, 0.05)'; // Super dim for non-path
           }
 
+          if (link.relationshipType === 'president_support') return '#8b5cf6'; // Violet for President
+          if (link.relationshipType === 'dr_support') return '#3b82f6'; // Blue for DR
           if (link.relationshipType === 'boyfriend' || link.relationshipType === 'girlfriend') return '#f43f5e'; // Rose/Pink
           if (link.relationshipType === 'roommate') return '#ec4899'; // Pink
           if (link.relationshipType === 'friend') return '#eab308'; // Yellow
