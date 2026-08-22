@@ -16,6 +16,8 @@ import {
   MapPin,
   Home,
   Calendar,
+  Target,
+  Users,
 } from "lucide-react";
 
 const HOSTELS_LIST = [
@@ -45,6 +47,8 @@ export default function VolunteerStudentDataPage() {
   }>({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
 
   const [editingStudentId, setEditingStudentId] = useState<number | null>(null);
+  const [activeFriendSearch, setActiveFriendSearch] = useState<number | null>(null);
+  const [allStudentsList, setAllStudentsList] = useState<any[]>([]);
 
   const handleEditClick = (student: any) => {
     let parsedFriends = [];
@@ -114,9 +118,13 @@ export default function VolunteerStudentDataPage() {
         console.error(err);
       }
 
-      // 3. Fetch candidates
-      const { data: candidatesRes } = await supabase.from('candidates').select('*');
-      if (candidatesRes) setCandidatesList(candidatesRes);
+      // 3. Fetch candidates & all students for search
+      const [candidatesRes, allStudentsRes] = await Promise.all([
+        supabase.from('candidates').select('*'),
+        fetch('/api/students/all').then(res => res.json()).catch(() => ({ students: [] }))
+      ]);
+      if (candidatesRes.data) setCandidatesList(candidatesRes.data);
+      if (allStudentsRes && allStudentsRes.success) setAllStudentsList(allStudentsRes.students);
       
       setLoading(false);
     };
@@ -164,20 +172,28 @@ export default function VolunteerStudentDataPage() {
     };
     
     if (editingStudentId) {
-      const { data, error } = await supabase.from('students').update(baseStudent).eq('id', editingStudentId).select();
-      
-      if (error) {
-        console.error("Supabase Error:", error);
-        setAddError(error.message);
+      try {
+        const response = await fetch('/api/students/secure', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingStudentId, ...baseStudent })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) throw new Error(result.error || 'Failed to update student');
+        
+        if (result.student) {
+          setStudentsList(studentsList.map(s => s.id === editingStudentId ? result.student : s));
+          setShowAddModal(false);
+          setEditingStudentId(null);
+          setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
+        }
+      } catch (err: any) {
+        console.error("API Error:", err);
+        setAddError(err.message);
         setIsSubmitting(false);
         return;
-      }
-      
-      if (data && data.length > 0) {
-        setStudentsList(studentsList.map(s => s.id === editingStudentId ? data[0] : s));
-        setShowAddModal(false);
-        setEditingStudentId(null);
-        setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
       }
     } else {
 
@@ -189,7 +205,7 @@ export default function VolunteerStudentDataPage() {
       };
 
       try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc('add_student_secure', {
+        const payload = {
           p_name: newStudent.name,
           p_gender: newStudent.gender,
           p_roll: newStudent.roll,
@@ -206,25 +222,27 @@ export default function VolunteerStudentDataPage() {
           p_affiliation: newStudent.affiliation,
           p_party_id: newStudent.party_id || null,
           p_president_preference: formData.presidentPref !== "Undecided" ? formData.presidentPref : null
+        };
+
+        const response = await fetch('/api/students/secure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
         
-        if (rpcError) {
-          throw new Error(rpcError.message);
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to add student');
         }
         
-        const { data: addedStudent } = await supabase
-          .from('students')
-          .select('*')
-          .eq('id', rpcData.id)
-          .single();
-          
-        if (addedStudent) {
-          setStudentsList([addedStudent, ...studentsList]);
+        if (result.student) {
+          setStudentsList([result.student, ...studentsList]);
           setShowAddModal(false);
           setFormData({ name: "", gender: "Male", roll: "", dept: "", year: "1st Year", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
         }
       } catch (err: any) {
-        console.error("RPC Error:", err);
+        console.error("API Error:", err);
         if (err.message && err.message.includes('unique_roll_number')) {
           setAddError(`Error: A student with Roll Number "${newStudent.roll}" already exists in the system!`);
         } else if (err.message && err.message.includes('Could not find the function')) {
@@ -475,204 +493,226 @@ export default function VolunteerStudentDataPage() {
                     </div>
                   )}
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    {/* Name */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Full Name *</label>
-                      <input 
-                        type="text" required
-                        value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                        placeholder="John Doe"
-                      />
-                    </div>
-                    {/* Roll No */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Roll Number *</label>
-                      <input 
-                        type="text" required
-                        value={formData.roll} onChange={e => setFormData({...formData, roll: e.target.value})}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                        placeholder="e.g. 21BCE100"
-                      />
-                    </div>
-                    {/* Gender */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Gender</label>
-                      <select 
-                        value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                      >
-                        <option value="Male" className="bg-[#090e1a]">Male</option>
-                        <option value="Female" className="bg-[#090e1a]">Female</option>
-                        <option value="Other" className="bg-[#090e1a]">Other</option>
-                      </select>
-                    </div>
-                    {/* Department */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Department</label>
-                      <input 
-                        type="text" 
-                        value={formData.dept} onChange={e => setFormData({...formData, dept: e.target.value})}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                        placeholder="e.g. Computer Science"
-                      />
-                    </div>
-                    {/* Year */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Year</label>
-                      <select 
-                        value={formData.year} onChange={e => setFormData({...formData, year: e.target.value})}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                      >
-                        <option value="1st Year" className="bg-[#090e1a]">1st Year</option>
-                        <option value="2nd Year" className="bg-[#090e1a]">2nd Year</option>
-                        <option value="3rd Year" className="bg-[#090e1a]">3rd Year</option>
-                        <option value="4th Year" className="bg-[#090e1a]">4th Year</option>
-                      </select>
-                    </div>
-                    {/* Mobile */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Mobile Number</label>
-                      <input 
-                        type="text" 
-                        value={formData.mobile} onChange={e => setFormData({...formData, mobile: e.target.value})}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                        placeholder="+91 9876543210"
-                      />
-                    </div>
-                    {/* Hostel */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Hostel</label>
-                      <select 
-                        value={formData.hostel} onChange={e => setFormData({...formData, hostel: e.target.value})}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                      >
-                        {HOSTELS_LIST.map(h => <option key={h} value={h} className="bg-[#090e1a]">{h}</option>)}
-                      </select>
-                    </div>
-                    {/* Room */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Room Number</label>
-                      <input 
-                        type="text" 
-                        value={formData.room} onChange={e => setFormData({...formData, room: e.target.value})}
-                        disabled={formData.hostel === "Day Scholar"}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white disabled:opacity-50 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                        placeholder="e.g. 101"
-                      />
-                    </div>
-                    {/* President Preference */}
-                    <div className="space-y-1.5 sm:col-span-1">
-                      <label className="text-xs font-semibold text-slate-300">President Preference</label>
-                      <select 
-                        value={formData.presidentPref} onChange={e => setFormData({...formData, presidentPref: e.target.value})}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50"
-                      >
-                        <option value="Undecided" className="bg-[#090e1a]">Undecided</option>
-                        {presidentOptions.filter(o => o !== 'Undecided').map(c => <option key={c} value={c} className="bg-[#090e1a]">{c}</option>)}
-                      </select>
-                    </div>
-                    {/* Multi-DR Preference (Up to 4) */}
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                        <span>DR Preference (Select up to 4)</span>
-                        <span className="text-[10px] text-blue-400">{formData.drPref.length}/4 Selected</span>
-                      </label>
-                      <div className="p-3 bg-white/5 border border-white/10 rounded-xl flex flex-wrap gap-2">
-                        {drOptions.length === 0 ? (
-                          <p className="text-xs text-slate-500 italic py-1">No DR candidates available.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { id: "name", label: "Full Name", icon: User, placeholder: "Student Name", type: "text", fullWidth: true },
+                    { id: "gender", label: "Gender", icon: Users, type: "select", options: ["Male", "Female", "Other"] },
+                    { id: "roll", label: "Roll Number", icon: IdCard, placeholder: "e.g. CS24B001", type: "text" },
+                    { 
+                      id: "dept", label: "Department", icon: Building2, type: "select", 
+                      options: ["Computer Science", "Information Technology", "UILS", "Electronics & Comm.", "Mechanical Engg.", "Civil Engineering", "Electrical Engg.", "Biotechnology", "Others"] 
+                    },
+                    { 
+                      id: "year", label: "Year", icon: Calendar, type: "select", 
+                      options: ["1st Year", "2nd Year", "3rd Year", "4th Year", "Ph.D./PG"] 
+                    },
+                    { id: "mobile", label: "Mobile", icon: Phone, placeholder: "+91", type: "tel" },
+                    { id: "email", label: "Email (Optional)", icon: Mail, placeholder: "student@college.edu", type: "email" },
+                    { 
+                      id: "hostel", label: "Hostel / Living", icon: Home, type: "select", 
+                      options: formData.gender === "Female" 
+                        ? [...Array.from({length: 11}, (_, i) => `Girls Hostel ${i + 1}`), "Day Scholar"]
+                        : [...Array.from({length: 8}, (_, i) => `Boys Hostel ${i + 1}`), "Day Scholar"]
+                    },
+                    { id: "room", label: "Room No. (Optional)", icon: Home, placeholder: "e.g. 212", type: "text" },
+                    { id: "address", label: "Home Address", icon: MapPin, placeholder: "City, State", type: "text", fullWidth: true }
+                  ].map((f) => (
+                    <div key={f.id} className={`space-y-1.5 ${f.fullWidth ? 'md:col-span-2' : 'col-span-1'}`}>
+                      <label className="text-xs font-semibold text-slate-400">{f.label}</label>
+                      <div className="relative">
+                        <f.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        {f.type === 'select' ? (
+                          <select
+                            value={formData[f.id as keyof typeof formData] as string}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (f.id === "gender") {
+                                setFormData((prev: any) => ({ 
+                                  ...prev, 
+                                  gender: val, 
+                                  hostel: val === "Female" ? "Girls Hostel 1" : "Boys Hostel 1" 
+                                }));
+                              } else {
+                                setFormData((prev: any) => ({ ...prev, [f.id]: val }));
+                              }
+                            }}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer appearance-none"
+                          >
+                            <option value="" disabled className="bg-[#0a0f1c] text-slate-500">Select {f.label}</option>
+                            {f.options?.map(opt => (
+                              <option key={opt} value={opt} className="bg-[#0a0f1c] text-white">{opt}</option>
+                            ))}
+                          </select>
                         ) : (
-                          drOptions.map(opt => {
-                            const isSelected = formData.drPref.includes(opt);
-                            const isDisabled = !isSelected && formData.drPref.length >= 4;
-                            return (
-                              <button
-                                type="button"
-                                key={opt}
-                                disabled={isDisabled}
-                                onClick={() => {
-                                  setFormData(prev => {
-                                    const newArr = prev.drPref.includes(opt) 
-                                      ? prev.drPref.filter(x => x !== opt)
-                                      : [...prev.drPref, opt];
-                                    return { ...prev, drPref: newArr };
-                                  });
-                                }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-                                  isSelected 
-                                    ? 'bg-blue-600/20 text-blue-400 border-blue-500/30' 
-                                    : isDisabled 
-                                      ? 'bg-black/20 text-slate-600 border-white/5 cursor-not-allowed'
-                                      : 'bg-black/20 text-slate-300 border-white/10 hover:bg-white/10 hover:border-white/20'
-                                }`}
-                              >
-                                {opt}
-                              </button>
-                            );
-                          })
+                          <input
+                            type={f.type}
+                            placeholder={f.placeholder}
+                            value={formData[f.id as keyof typeof formData] as string}
+                            onChange={(e) => setFormData(prev => ({ ...prev, [f.id]: e.target.value }))}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
+                          />
                         )}
                       </div>
                     </div>
-                    {/* Dynamic Relationships UI */}
-                    <div className="sm:col-span-2 space-y-3 pt-2 border-t border-white/5 mt-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-bold text-white">Friend Circle & Relationships</label>
-                        <button 
-                          type="button"
-                          onClick={() => setFormData({...formData, friends: [...formData.friends, { roll: "", type: "friend" }]})}
-                          className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
-                        >
-                          + Add Connection
-                        </button>
-                      </div>
-                      {formData.friends.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic">No relationships added yet.</p>
+                  ))}
+                  
+                  {/* President Preference */}
+                  <div className="space-y-1.5 col-span-1">
+                    <label className="text-xs font-semibold text-slate-400">President Preference</label>
+                    <div className="relative">
+                      <Target className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <select
+                        value={formData.presidentPref}
+                        onChange={(e) => setFormData((prev: any) => ({ ...prev, presidentPref: e.target.value }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer appearance-none"
+                      >
+                        <option value="Undecided" className="bg-[#0a0f1c] text-white">Undecided</option>
+                        {presidentOptions.filter(o => o !== 'Undecided').map(opt => (
+                          <option key={opt} value={opt} className="bg-[#0a0f1c] text-white">{opt}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Multi-DR Preference (Up to 4) */}
+                  <div className="space-y-1.5 col-span-1 md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-400 flex items-center justify-between">
+                      <span>DR Preference (Select up to 4)</span>
+                      <span className="text-[10px] text-blue-400">{formData.drPref.length}/4 Selected</span>
+                    </label>
+                    <div className="p-3 bg-white/5 border border-white/10 rounded-xl flex flex-wrap gap-2">
+                      {drOptions.length === 0 ? (
+                        <p className="text-xs text-slate-500 italic py-1">No DR candidates available.</p>
                       ) : (
-                        <div className="space-y-2">
-                          {formData.friends.map((friend, idx) => (
-                            <div key={idx} className="flex gap-2 items-center">
+                        drOptions.map(opt => {
+                          const isSelected = formData.drPref.includes(opt);
+                          const isDisabled = !isSelected && formData.drPref.length >= 4;
+                          return (
+                            <button
+                              type="button"
+                              key={opt}
+                              disabled={isDisabled}
+                              onClick={() => {
+                                setFormData(prev => {
+                                  const newArr = prev.drPref.includes(opt) 
+                                    ? prev.drPref.filter(x => x !== opt)
+                                    : [...prev.drPref, opt];
+                                  return { ...prev, drPref: newArr };
+                                });
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                                isSelected 
+                                  ? 'bg-blue-600/20 text-blue-400 border-blue-500/30' 
+                                  : isDisabled 
+                                    ? 'bg-white/5 text-slate-600 border-white/5 cursor-not-allowed'
+                                    : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:border-white/20'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Dynamic Relationships UI */}
+                  <div className="md:col-span-2 space-y-3 pt-2 border-t border-white/5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-bold text-white">Friend Circle & Relationships</label>
+                      <button 
+                        type="button"
+                        onClick={() => setFormData({...formData, friends: [...formData.friends, { roll: "", type: "friend" }]})}
+                        className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                      >
+                        + Add Connection
+                      </button>
+                    </div>
+                    {formData.friends.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic">No relationships added yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {formData.friends.map((friend, idx) => (
+                          <div key={idx} className="flex gap-2 items-center">
+                            <div className="relative flex-1">
                               <input 
-                                type="text" placeholder="Roll No. (e.g. CS24B001)"
+                                type="text" placeholder="Search name or roll no..."
                                 value={friend.roll}
+                                onFocus={() => setActiveFriendSearch(idx)}
                                 onChange={(e) => {
                                   const newFriends = [...formData.friends];
                                   newFriends[idx] = { ...newFriends[idx], roll: e.target.value };
                                   setFormData({...formData, friends: newFriends});
                                 }}
-                                className="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
+                                onBlur={() => setTimeout(() => setActiveFriendSearch(null), 200)}
+                                className="w-full bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
                               />
-                              <select
-                                value={friend.type}
-                                onChange={(e) => {
-                                  const newFriends = [...formData.friends];
-                                  newFriends[idx] = { ...newFriends[idx], type: e.target.value };
-                                  setFormData({...formData, friends: newFriends});
-                                }}
-                                className="w-32 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
-                              >
-                                <option value="friend" className="bg-[#090e1a]">Friend</option>
-                                <option value="boyfriend" className="bg-[#090e1a]">Boyfriend</option>
-                                <option value="girlfriend" className="bg-[#090e1a]">Girlfriend</option>
-                                <option value="roommate" className="bg-[#090e1a]">Roommate</option>
-                                <option value="other" className="bg-[#090e1a]">Other</option>
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const newFriends = formData.friends.filter((_, i) => i !== idx);
-                                  setFormData({...formData, friends: newFriends});
-                                }}
-                                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-                              >
-                                ✕
-                              </button>
+                              {activeFriendSearch === idx && (
+                                <div className="absolute top-full left-0 mt-1 w-full max-h-48 overflow-y-auto bg-[#0d1526] border border-white/10 rounded-xl shadow-2xl z-50">
+                                  {allStudentsList
+                                    .filter(s => 
+                                      s.name.toLowerCase().includes(friend.roll.toLowerCase()) || 
+                                      s.roll.toLowerCase().includes(friend.roll.toLowerCase())
+                                    )
+                                    .slice(0, 10)
+                                    .map(s => (
+                                      <div 
+                                        key={s.id}
+                                        onClick={() => {
+                                          const newFriends = [...formData.friends];
+                                          newFriends[idx] = { ...newFriends[idx], roll: s.roll };
+                                          setFormData({...formData, friends: newFriends});
+                                          setActiveFriendSearch(null);
+                                        }}
+                                        className="px-3 py-2 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0"
+                                      >
+                                        <div className="text-sm font-semibold text-white">{s.name}</div>
+                                        <div className="text-[10px] text-slate-400 flex flex-wrap gap-1.5 mt-0.5">
+                                          <span className="text-blue-400 font-medium">{s.roll}</span>
+                                          <span>•</span>
+                                          <span>{s.dept}</span>
+                                          <span>•</span>
+                                          <span>{s.year}</span>
+                                        </div>
+                                      </div>
+                                  ))}
+                                  {allStudentsList.filter(s => s.name.toLowerCase().includes(friend.roll.toLowerCase()) || s.roll.toLowerCase().includes(friend.roll.toLowerCase())).length === 0 && (
+                                    <div className="px-3 py-3 text-xs text-slate-500 italic text-center">No students found.</div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                            <select
+                              value={friend.type}
+                              onChange={(e) => {
+                                const newFriends = [...formData.friends];
+                                newFriends[idx] = { ...newFriends[idx], type: e.target.value };
+                                setFormData({...formData, friends: newFriends});
+                              }}
+                              className="w-32 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
+                            >
+                              <option value="friend" className="bg-[#090e1a]">Friend</option>
+                              <option value="boyfriend" className="bg-[#090e1a]">Boyfriend</option>
+                              <option value="girlfriend" className="bg-[#090e1a]">Girlfriend</option>
+                              <option value="roommate" className="bg-[#090e1a]">Roommate</option>
+                              <option value="other" className="bg-[#090e1a]">Other</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newFriends = formData.friends.filter((_, i) => i !== idx);
+                                setFormData({...formData, friends: newFriends});
+                              }}
+                              className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                </div>
 
                   </div>
 

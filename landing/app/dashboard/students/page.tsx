@@ -79,6 +79,8 @@ export default function StudentDataPage() {
   }>({ name: "", gender: "Male", roll: "", dept: "", year: "", hostel: "Boys Hostel 1", room: "", address: "", mobile: "", email: "", drPref: [], presidentPref: "Undecided", friends: [] });
 
   const [editingStudentId, setEditingStudentId] = useState<number | null>(null);
+  const [activeFriendSearch, setActiveFriendSearch] = useState<number | null>(null);
+  const [allStudentsList, setAllStudentsList] = useState<any[]>([]);
 
   const handleEditClick = (student: any) => {
     let parsedFriends = [];
@@ -143,11 +145,13 @@ export default function StudentDataPage() {
         studentsQuery = studentsQuery.eq('party_id', currentPartyId);
       }
 
-      const [studentsRes, candidatesRes] = await Promise.all([
+      const [studentsRes, candidatesRes, allStudentsRes] = await Promise.all([
         studentsQuery,
-        supabase.from('candidates').select('*')
+        supabase.from('candidates').select('*'),
+        fetch('/api/students/all').then(res => res.json()).catch(() => ({ students: [] }))
       ]);
       if (studentsRes.data) setStudentsList(studentsRes.data);
+      if (allStudentsRes && allStudentsRes.success) setAllStudentsList(allStudentsRes.students);
       if (candidatesRes.data) {
         setCandidatesList(candidatesRes.data);
         const styleMap: Record<string, any> = {};
@@ -181,22 +185,24 @@ export default function StudentDataPage() {
     };
     
     if (editingStudentId) {
-      const { data, error } = await supabase.from('students').update(baseStudent).eq('id', editingStudentId).select();
-      
-      if (error) {
-        console.error("Supabase Error:", error);
-        alert(`Error updating student: ${error.message}`);
+      try {
+        const response = await fetch('/api/students/secure', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingStudentId, ...baseStudent })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) throw new Error(result.error || 'Failed to update student');
+        
+        if (result.student) {
+          setStudentsList(studentsList.map(s => s.id === editingStudentId ? result.student : s));
+        }
+      } catch (err: any) {
+        console.error("API Error:", err);
+        alert(`Error updating student: ${err.message}`);
         return;
-      }
-      
-      if (!data || data.length === 0) {
-        console.warn("Update blocked by RLS or student not found.");
-        alert("Failed to update student. Ensure you have permissions (RLS blocked the update).");
-        return;
-      }
-      
-      if (data && data.length > 0) {
-        setStudentsList(studentsList.map(s => s.id === editingStudentId ? data[0] : s));
       }
     } else {
       const newStudent = {
@@ -206,7 +212,7 @@ export default function StudentDataPage() {
       };
 
       try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc('add_student_secure', {
+        const payload = {
           p_name: newStudent.name,
           p_gender: newStudent.gender,
           p_roll: newStudent.roll,
@@ -223,24 +229,25 @@ export default function StudentDataPage() {
           p_affiliation: newStudent.affiliation,
           p_party_id: newStudent.party_id || null,
           p_president_preference: formData.presidentPref !== "Undecided" ? formData.presidentPref : null
+        };
+
+        const response = await fetch('/api/students/secure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
         
-        if (rpcError) {
-          throw new Error(rpcError.message);
-        }
+        const result = await response.json();
         
-        // Fetch the newly added student to get the full object
-        const { data: addedStudent } = await supabase
-          .from('students')
-          .select('*')
-          .eq('id', rpcData.id)
-          .single();
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to add student');
+        }
           
-        if (addedStudent) {
-          setStudentsList([addedStudent, ...studentsList]);
+        if (result.student) {
+          setStudentsList([result.student, ...studentsList]);
         }
       } catch (err: any) {
-        console.error("RPC Error:", err);
+        console.error("API Error:", err);
         if (err.message && err.message.includes('unique_roll_number')) {
           alert(`Error: A student with Roll Number "${newStudent.roll}" already exists in the system!`);
         } else if (err.message && err.message.includes('Could not find the function')) {
@@ -1240,16 +1247,54 @@ export default function StudentDataPage() {
                       <div className="space-y-2">
                         {formData.friends.map((friend, idx) => (
                           <div key={idx} className="flex gap-2 items-center">
-                            <input 
-                              type="text" placeholder="Roll No. (e.g. CS24B001)"
-                              value={friend.roll}
-                              onChange={(e) => {
-                                const newFriends = [...formData.friends];
-                                newFriends[idx] = { ...newFriends[idx], roll: e.target.value };
-                                setFormData({...formData, friends: newFriends});
-                              }}
-                              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
-                            />
+                            <div className="relative flex-1">
+                              <input 
+                                type="text" placeholder="Search name or roll no..."
+                                value={friend.roll}
+                                onFocus={() => setActiveFriendSearch(idx)}
+                                onChange={(e) => {
+                                  const newFriends = [...formData.friends];
+                                  newFriends[idx] = { ...newFriends[idx], roll: e.target.value };
+                                  setFormData({...formData, friends: newFriends});
+                                }}
+                                onBlur={() => setTimeout(() => setActiveFriendSearch(null), 200)}
+                                className="w-full bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
+                              />
+                              {activeFriendSearch === idx && (
+                                <div className="absolute top-full left-0 mt-1 w-full max-h-48 overflow-y-auto bg-[#0d1526] border border-white/10 rounded-xl shadow-2xl z-50">
+                                  {allStudentsList
+                                    .filter(s => 
+                                      s.name.toLowerCase().includes(friend.roll.toLowerCase()) || 
+                                      s.roll.toLowerCase().includes(friend.roll.toLowerCase())
+                                    )
+                                    .slice(0, 10)
+                                    .map(s => (
+                                      <div 
+                                        key={s.id}
+                                        onClick={() => {
+                                          const newFriends = [...formData.friends];
+                                          newFriends[idx] = { ...newFriends[idx], roll: s.roll };
+                                          setFormData({...formData, friends: newFriends});
+                                          setActiveFriendSearch(null);
+                                        }}
+                                        className="px-3 py-2 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0"
+                                      >
+                                        <div className="text-sm font-semibold text-white">{s.name}</div>
+                                        <div className="text-[10px] text-slate-400 flex flex-wrap gap-1.5 mt-0.5">
+                                          <span className="text-blue-400 font-medium">{s.roll}</span>
+                                          <span>•</span>
+                                          <span>{s.dept}</span>
+                                          <span>•</span>
+                                          <span>{s.year}</span>
+                                        </div>
+                                      </div>
+                                  ))}
+                                  {allStudentsList.filter(s => s.name.toLowerCase().includes(friend.roll.toLowerCase()) || s.roll.toLowerCase().includes(friend.roll.toLowerCase())).length === 0 && (
+                                    <div className="px-3 py-3 text-xs text-slate-500 italic text-center">No students found.</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             <select
                               value={friend.type}
                               onChange={(e) => {
