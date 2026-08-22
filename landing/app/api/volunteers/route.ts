@@ -72,11 +72,16 @@ export async function POST(request: Request) {
        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    if (!volunteerData || volunteerData.length === 0) {
+       console.error("Insert failed silently (likely RLS policy restriction).");
+       return NextResponse.json({ error: 'Database blocked the insert. Please check your Supabase Row Level Security (RLS) policies for the volunteers table.' }, { status: 403 });
+    }
+
     // 5. Return the generated credentials
     return NextResponse.json({
       success: true,
       message: 'Volunteer added successfully',
-      volunteer: volunteerData ? volunteerData[0] : null,
+      volunteer: volunteerData[0],
       credentials: {
         email: email,
         password: plainPassword
