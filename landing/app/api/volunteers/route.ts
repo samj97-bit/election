@@ -18,7 +18,7 @@ function generatePassword() {
 export async function POST(request: Request) {
   try {
     const data = await request.json();
-    const { name, email, roll, mobile, dept, year, task, party_id } = data;
+    const { name, email, roll, mobile, dept, year, task, party_id, friends } = data;
 
     if (!name || !email || !party_id) {
       return NextResponse.json({ error: 'Name, email, and party_id are required' }, { status: 400 });
@@ -64,7 +64,8 @@ export async function POST(request: Request) {
       year: year || 'Unknown',
       tasks: task || 'Unassigned',
       password_hash: hashedPassword,
-      status: 'Active'
+      status: 'Active',
+      friends: friends && friends.length > 0 ? friends : []
     }]).select();
 
     if (error) {

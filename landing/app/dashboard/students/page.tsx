@@ -145,13 +145,10 @@ export default function StudentDataPage() {
         studentsQuery = studentsQuery.eq('party_id', currentPartyId);
       }
 
-      const [studentsRes, candidatesRes, allStudentsRes] = await Promise.all([
-        studentsQuery,
-        supabase.from('candidates').select('*'),
-        fetch('/api/students/all').then(res => res.json()).catch(() => ({ students: [] }))
-      ]);
+      const studentsRes = await studentsQuery;
+      const candidatesRes = await supabase.from('candidates').select('*');
+      
       if (studentsRes.data) setStudentsList(studentsRes.data);
-      if (allStudentsRes && allStudentsRes.success) setAllStudentsList(allStudentsRes.students);
       if (candidatesRes.data) {
         setCandidatesList(candidatesRes.data);
         const styleMap: Record<string, any> = {};
@@ -162,6 +159,16 @@ export default function StudentDataPage() {
         setLiveDrStyle(styleMap);
       }
       setLoading(false);
+
+      // Fetch all students silently in the background for the search dropdown
+      fetch('/api/students/all')
+        .then(res => res.json())
+        .then(allStudentsRes => {
+          if (allStudentsRes && allStudentsRes.success) {
+            setAllStudentsList(allStudentsRes.students);
+          }
+        })
+        .catch(console.error);
     };
     fetchData();
   }, []);
@@ -361,10 +368,10 @@ export default function StudentDataPage() {
 
   const filtered = studentsList.filter((s: any) => {
     const matchSearch =
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.roll.toLowerCase().includes(search.toLowerCase()) ||
-      s.mobile.replace(/\s+/g, "").includes(search.replace(/\s+/g, "")) ||
-      s.dept.toLowerCase().includes(search.toLowerCase()) ||
+      (s.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (s.roll || "").toLowerCase().includes(search.toLowerCase()) ||
+      (s.hostel || "").toLowerCase().includes(search.toLowerCase()) ||
+      (s.dept || "").toLowerCase().includes(search.toLowerCase()) ||
       (s.collected_by && s.collected_by.toLowerCase().includes(search.toLowerCase()));
     
     const matchYear = yearFilter === "All" || s.year === yearFilter;
@@ -1264,8 +1271,8 @@ export default function StudentDataPage() {
                                 <div className="absolute top-full left-0 mt-1 w-full max-h-48 overflow-y-auto bg-[#0d1526] border border-white/10 rounded-xl shadow-2xl z-50">
                                   {allStudentsList
                                     .filter(s => 
-                                      s.name.toLowerCase().includes(friend.roll.toLowerCase()) || 
-                                      s.roll.toLowerCase().includes(friend.roll.toLowerCase())
+                                      (s.name || "").toLowerCase().includes((friend.roll || "").toLowerCase()) || 
+                                      (s.roll || "").toLowerCase().includes((friend.roll || "").toLowerCase())
                                     )
                                     .slice(0, 10)
                                     .map(s => (
@@ -1289,7 +1296,7 @@ export default function StudentDataPage() {
                                         </div>
                                       </div>
                                   ))}
-                                  {allStudentsList.filter(s => s.name.toLowerCase().includes(friend.roll.toLowerCase()) || s.roll.toLowerCase().includes(friend.roll.toLowerCase())).length === 0 && (
+                                  {allStudentsList.filter(s => (s.name || "").toLowerCase().includes((friend.roll || "").toLowerCase()) || (s.roll || "").toLowerCase().includes((friend.roll || "").toLowerCase())).length === 0 && (
                                     <div className="px-3 py-3 text-xs text-slate-500 italic text-center">No students found.</div>
                                   )}
                                 </div>

@@ -33,8 +33,10 @@ export default function VolunteersPage() {
   const [filter, setFilter] = useState<"All" | "Active" | "Inactive">("All");
   const [showModal, setShowModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({ name: "", roll: "", mobile: "", email: "", dept: "", year: "", task: "" });
+  const [formData, setFormData] = useState({ name: "", roll: "", mobile: "", email: "", dept: "", year: "", task: "", friends: [] as any[] });
   const [generatedCredentials, setGeneratedCredentials] = useState<{email: string, password: string, hashedPasswordDebug?: string} | null>(null);
+  const [activeFriendSearch, setActiveFriendSearch] = useState<number | null>(null);
+  const [allStudentsList, setAllStudentsList] = useState<any[]>([]);
 
   const [partyId, setPartyId] = useState<string | null>(null);
 
@@ -67,6 +69,16 @@ export default function VolunteersPage() {
             console.error("Error fetching volunteers:", error);
           }
           if (data) setVolunteers(data);
+          
+          // Fetch all students silently in the background for the search dropdown
+          fetch('/api/students/all')
+            .then(res => res.json())
+            .then(allStudentsRes => {
+              if (allStudentsRes && allStudentsRes.success) {
+                setAllStudentsList(allStudentsRes.students);
+              }
+            })
+            .catch(console.error);
         }
       }
       setLoading(false);
@@ -116,7 +128,7 @@ export default function VolunteersPage() {
   const closeModal = () => {
     setShowModal(false);
     setTimeout(() => {
-      setFormData({ name: "", roll: "", mobile: "", email: "", dept: "", year: "", task: "" });
+      setFormData({ name: "", roll: "", mobile: "", email: "", dept: "", year: "", task: "", friends: [] });
       setGeneratedCredentials(null);
     }, 200);
   };
@@ -201,6 +213,7 @@ export default function VolunteersPage() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Roll / Dept</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Task</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Connections</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -240,6 +253,26 @@ export default function VolunteersPage() {
                 </td>
                 <td className="px-4 py-3.5">
                   <span className="text-xs text-slate-400">{v.tasks}</span>
+                </td>
+                <td className="px-4 py-3.5">
+                  <div className="flex -space-x-2">
+                    {v.friends && v.friends.length > 0 ? (
+                      <>
+                        {v.friends.slice(0, 3).map((f: any, i: number) => (
+                          <div key={i} className="w-6 h-6 rounded-full bg-slate-800 border-2 border-[#0d1526] flex items-center justify-center text-[9px] font-bold text-white z-10" title={f.roll}>
+                            {(f.roll || "???").slice(-3)}
+                          </div>
+                        ))}
+                        {v.friends.length > 3 && (
+                          <div className="w-6 h-6 rounded-full bg-slate-800 border-2 border-[#0d1526] flex items-center justify-center text-[9px] font-bold text-slate-400 z-0">
+                            +{v.friends.length - 3}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs text-slate-600">-</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3.5">
                   <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${statusColor[v.status] || statusColor['Active']}`}>
@@ -385,6 +418,104 @@ export default function VolunteersPage() {
                           </div>
                         </div>
                       ))}
+                        
+                        {/* Dynamic Relationships UI for Volunteer */}
+                        <div className="col-span-2 space-y-3 pt-2 border-t border-white/5 mt-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-bold text-white">Friend Circle & Relationships</label>
+                            <button 
+                              type="button"
+                              onClick={() => setFormData({...formData, friends: [...formData.friends, { roll: "", type: "friend" }]})}
+                              className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                            >
+                              + Add Connection
+                            </button>
+                          </div>
+                          {formData.friends.length === 0 ? (
+                            <p className="text-xs text-slate-500 italic">No relationships added yet.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {formData.friends.map((friend, idx) => (
+                                <div key={idx} className="flex gap-2 items-center">
+                                  <div className="relative flex-1">
+                                    <input 
+                                      type="text" placeholder="Search name or roll no..."
+                                      value={friend.roll}
+                                      onFocus={() => setActiveFriendSearch(idx)}
+                                      onChange={(e) => {
+                                        const newFriends = [...formData.friends];
+                                        newFriends[idx] = { ...newFriends[idx], roll: e.target.value };
+                                        setFormData({...formData, friends: newFriends});
+                                      }}
+                                      onBlur={() => setTimeout(() => setActiveFriendSearch(null), 200)}
+                                      className="w-full bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
+                                    />
+                                    {activeFriendSearch === idx && (
+                                      <div className="absolute top-full left-0 mt-1 w-full max-h-48 overflow-y-auto bg-[#0d1526] border border-white/10 rounded-xl shadow-2xl z-50">
+                                        {allStudentsList
+                                          .filter(s => 
+                                            (s.name || "").toLowerCase().includes((friend.roll || "").toLowerCase()) || 
+                                            (s.roll || "").toLowerCase().includes((friend.roll || "").toLowerCase())
+                                          )
+                                          .slice(0, 10)
+                                          .map(s => (
+                                            <div 
+                                              key={s.id}
+                                              onClick={() => {
+                                                const newFriends = [...formData.friends];
+                                                newFriends[idx] = { ...newFriends[idx], roll: s.roll };
+                                                setFormData({...formData, friends: newFriends});
+                                                setActiveFriendSearch(null);
+                                              }}
+                                              className="px-3 py-2 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0"
+                                            >
+                                              <div className="text-sm font-semibold text-white">{s.name}</div>
+                                              <div className="text-[10px] text-slate-400 flex flex-wrap gap-1.5 mt-0.5">
+                                                <span className="text-blue-400 font-medium">{s.roll}</span>
+                                                <span>•</span>
+                                                <span>{s.dept}</span>
+                                                <span>•</span>
+                                                <span>{s.year}</span>
+                                              </div>
+                                            </div>
+                                        ))}
+                                        {allStudentsList.filter(s => (s.name || "").toLowerCase().includes((friend.roll || "").toLowerCase()) || (s.roll || "").toLowerCase().includes((friend.roll || "").toLowerCase())).length === 0 && (
+                                          <div className="px-3 py-3 text-xs text-slate-500 italic text-center">No students found.</div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <select
+                                    value={friend.type}
+                                    onChange={(e) => {
+                                      const newFriends = [...formData.friends];
+                                      newFriends[idx] = { ...newFriends[idx], type: e.target.value };
+                                      setFormData({...formData, friends: newFriends});
+                                    }}
+                                    className="w-32 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500/50"
+                                  >
+                                    <option value="friend" className="bg-[#090e1a]">Friend</option>
+                                    <option value="boyfriend" className="bg-[#090e1a]">Boyfriend</option>
+                                    <option value="girlfriend" className="bg-[#090e1a]">Girlfriend</option>
+                                    <option value="roommate" className="bg-[#090e1a]">Roommate</option>
+                                    <option value="other" className="bg-[#090e1a]">Other</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newFriends = formData.friends.filter((_, i) => i !== idx);
+                                      setFormData({...formData, friends: newFriends});
+                                    }}
+                                    className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
                       <button 
                         onClick={handleAddVolunteer}
                         disabled={isSubmitting}

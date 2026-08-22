@@ -118,15 +118,21 @@ export default function VolunteerStudentDataPage() {
         console.error(err);
       }
 
-      // 3. Fetch candidates & all students for search
-      const [candidatesRes, allStudentsRes] = await Promise.all([
-        supabase.from('candidates').select('*'),
-        fetch('/api/students/all').then(res => res.json()).catch(() => ({ students: [] }))
-      ]);
-      if (candidatesRes.data) setCandidatesList(candidatesRes.data);
-      if (allStudentsRes && allStudentsRes.success) setAllStudentsList(allStudentsRes.students);
+      // 3. Fetch candidates
+      const { data: candidatesRes } = await supabase.from('candidates').select('*');
+      if (candidatesRes) setCandidatesList(candidatesRes);
       
       setLoading(false);
+
+      // Fetch all students silently in the background for the search dropdown
+      fetch('/api/students/all')
+        .then(res => res.json())
+        .then(allStudentsRes => {
+          if (allStudentsRes && allStudentsRes.success) {
+            setAllStudentsList(allStudentsRes.students);
+          }
+        })
+        .catch(console.error);
     };
     
     fetchData();
@@ -260,9 +266,9 @@ export default function VolunteerStudentDataPage() {
 
   const filtered = studentsList.filter((s: any) => {
     return (
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.roll.toLowerCase().includes(search.toLowerCase()) ||
-      s.mobile.replace(/\s+/g, "").includes(search.replace(/\s+/g, ""))
+      (s.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (s.roll || "").toLowerCase().includes(search.toLowerCase()) ||
+      (s.mobile || "").replace(/\s+/g, "").includes(search.replace(/\s+/g, ""))
     );
   });
 
@@ -651,8 +657,8 @@ export default function VolunteerStudentDataPage() {
                                 <div className="absolute top-full left-0 mt-1 w-full max-h-48 overflow-y-auto bg-[#0d1526] border border-white/10 rounded-xl shadow-2xl z-50">
                                   {allStudentsList
                                     .filter(s => 
-                                      s.name.toLowerCase().includes(friend.roll.toLowerCase()) || 
-                                      s.roll.toLowerCase().includes(friend.roll.toLowerCase())
+                                      (s.name || "").toLowerCase().includes((friend.roll || "").toLowerCase()) || 
+                                      (s.roll || "").toLowerCase().includes((friend.roll || "").toLowerCase())
                                     )
                                     .slice(0, 10)
                                     .map(s => (
@@ -676,9 +682,9 @@ export default function VolunteerStudentDataPage() {
                                         </div>
                                       </div>
                                   ))}
-                                  {allStudentsList.filter(s => s.name.toLowerCase().includes(friend.roll.toLowerCase()) || s.roll.toLowerCase().includes(friend.roll.toLowerCase())).length === 0 && (
-                                    <div className="px-3 py-3 text-xs text-slate-500 italic text-center">No students found.</div>
-                                  )}
+                                        {allStudentsList.filter(s => (s.name || "").toLowerCase().includes((friend.roll || "").toLowerCase()) || (s.roll || "").toLowerCase().includes((friend.roll || "").toLowerCase())).length === 0 && (
+                                          <div className="px-3 py-3 text-xs text-slate-500 italic text-center">No students found.</div>
+                                        )}
                                 </div>
                               )}
                             </div>
